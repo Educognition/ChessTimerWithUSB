@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tournament Digital Chess Clock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --white-clock-bg: #f8fafc;
+      --white-clock-panel: #eef2f6;
+      --white-digits: #0f172a;
+      --black-clock-bg: #090b0e;
+      --black-clock-panel: #11141b;
+      --black-digits: #f59e0b;
+      --active-green: #22c55e;
+      --flag-red: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #06080b;
+      color: #e2e8f0;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .digital-lcd {
+      font-family: 'Chakra Petch', 'Courier New', monospace;
+      font-feature-settings: "tnum" 1;
+      letter-spacing: -0.035em;
+      line-height: 0.95;
+      font-size: clamp(3.8rem, 14vw, 17vh);
+    }
+
+    /* Sub-second precision display styling */
+    .digital-lcd.tenths {
+      font-size: clamp(3.2rem, 12vw, 15vh);
+    }
+
+    /* White Side styling */
+    .white-side {
+      background: radial-gradient(circle at 50% 30%, #ffffff 0%, #e2e8f0 100%);
+      color: #0f172a;
+      box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.9), 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .white-screen {
+      background: #dbe4ee;
+      box-shadow: inset 0 6px 14px rgba(0, 0, 0, 0.18), inset 0 -1px 3px rgba(255, 255, 255, 0.8);
+      border: 2px solid #b6c4d4;
+    }
+
+    /* Black Side styling */
+    .black-side {
+      background: radial-gradient(circle at 50% 30%, #151922 0%, #080a0e 100%);
+      color: #f8fafc;
+      box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05), 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+    }
+
+    .black-screen {
+      background: #050608;
+      box-shadow: inset 0 6px 18px rgba(0, 0, 0, 0.9), inset 0 1px 2px rgba(255, 255, 255, 0.05);
+      border: 2px solid #232936;
+    }
+
+    /* Turn glow highlights */
+    .side-card {
+      transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+      border-width: 4px;
+    }
+
+    .white-side.active-turn {
+      border-color: #16a34a !important;
+      box-shadow: 0 0 45px rgba(34, 197, 94, 0.45), inset 0 0 20px rgba(34, 197, 94, 0.15) !important;
+      transform: scale(1.008);
+    }
+
+    .black-side.active-turn {
+      border-color: #22c55e !important;
+      box-shadow: 0 0 50px rgba(34, 197, 94, 0.45), inset 0 0 20px rgba(34, 197, 94, 0.2) !important;
+      transform: scale(1.008);
+    }
+
+    /* Flagged Timeout States */
+    .side-card.flagged {
+      border-color: var(--flag-red) !important;
+      animation: flagBlink 0.8s infinite alternate ease-in-out;
+    }
+
+    @keyframes flagBlink {
+      0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+      100% { box-shadow: 0 0 50px rgba(239, 68, 68, 0.95); }
+    }
+
+    .modal-backdrop {
+      background: rgba(4, 6, 9, 0.86);
+      backdrop-filter: blur(10px);
+    }
+  </style>
+</head>
+<body class="flex flex-col justify-between p-2 sm:p-4 select-none">
+
+  <!-- Minimal Header Bar -->
+  <header class="w-full flex items-center justify-between px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold text-slate-400">
+    <div class="flex items-center gap-2 sm:gap-3">
+      <div id="status-pulse" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+      <span class="tracking-widest uppercase font-mono text-slate-300 font-bold">CHESS CLOCK PRO</span>
+      <span id="header-preset-badge" class="bg-slate-900 border border-slate-700 text-slate-300 font-mono px-2 py-0.5 rounded text-[11px]">
+        5m + 0s
+      </span>
+      <span id="active-mode-badge" class="hidden md:inline-block bg-slate-900 border border-slate-800 text-emerald-400 font-mono px-2 py-0.5 rounded text-[11px]">
+        Mode: Split Keyboard
+      </span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <div id="game-status-badge" class="px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+        Ready
+      </div>
+      <button id="btn-fullscreen" title="Toggle Fullscreen" class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Giant Side-by-Side Clock Container -->
+  <main class="w-full flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 my-1 sm:my-2 min-h-0">
+    
+    <!-- PLAYER 1: WHITE -->
+    <div id="card-0" onclick="handleCardClick(0)" class="side-card white-side border-slate-300 rounded-3xl p-3 sm:p-5 flex flex-col justify-between cursor-pointer relative overflow-hidden">
+      <!-- White Header Bar -->
+      <div class="flex items-center justify-between border-b-2 border-slate-300/80 pb-2">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- White King Icon -->
+          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white border-2 border-slate-400 flex items-center justify-center shadow-md">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-slate-900 fill-current" viewBox="0 0 24 24">
+              <path d="M19 22H5v-2h14v2m-1-4H6c-.55 0-1-.45-1-1 0-.32.16-.62.43-.8L7 13.1V8a1 1 0 0 1 1-1h1.59l-.8-2.4C8.66 4.2 8.87 3.8 9.27 3.67c.4-.13.84.08.96.48l.94 2.85h1.66l.94-2.85c.12-.4.56-.61.96-.48.4.13.61.53.48.93l-.8 2.4H16a1 1 0 0 1 1 1v5.1l1.57 1.1c.27.18.43.48.43.8 0 .55-.45 1-1 1M8 17h8l-1.33-4H9.33L8 17z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xl sm:text-2xl font-black tracking-tight text-slate-900">WHITE</span>
+              <span id="turn-badge-0" class="hidden px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold uppercase tracking-wider shadow-sm">
+                Thinking
+              </span>
+            </div>
+            <div class="text-[11px] sm:text-xs font-semibold text-slate-600 uppercase tracking-wider">Player 1</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3 font-mono">
+          <span id="moves-0" class="text-xs sm:text-sm font-bold text-slate-700 bg-white/80 px-2 py-1 rounded-lg border border-slate-300 shadow-sm">
+            MV: 0
+          </span>
+          <span id="inc-badge-0" class="text-xs sm:text-sm font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-300 shadow-sm">
+            +0s
+          </span>
+        </div>
+      </div>
+
+      <!-- Giant Digits White Screen -->
+      <div class="white-screen rounded-2xl flex-1 flex flex-col items-center justify-center my-2 p-2 relative">
+        <div id="flag-0" class="hidden absolute top-3 right-4 bg-red-600 text-white text-xs sm:text-sm font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg border border-red-400">
+          TIME OUT
+        </div>
+
+        <div id="display-0" class="digital-lcd font-extrabold text-slate-950 text-center tracking-tighter drop-shadow-sm">
+          05:00
+        </div>
+
+        <div id="subtext-0" class="text-xs sm:text-sm font-mono font-bold text-slate-600 uppercase tracking-widest mt-1">
+          White Moves First
+        </div>
+      </div>
+
+      <!-- Input Trigger Hint -->
+      <div class="flex items-center justify-between text-[11px] sm:text-xs font-mono font-semibold text-slate-600 pt-1">
+        <span id="keybind-label-0" class="text-emerald-700 font-bold truncate">Hit any key on Left Half</span>
+        <span class="hidden sm:inline text-slate-500 uppercase">Click / Slam Screen</span>
+      </div>
+    </div>
+
+    <!-- PLAYER 2: BLACK -->
+    <div id="card-1" onclick="handleCardClick(1)" class="side-card black-side border-slate-800 rounded-3xl p-3 sm:p-5 flex flex-col justify-between cursor-pointer relative overflow-hidden">
+      <!-- Black Header Bar -->
+      <div class="flex items-center justify-between border-b-2 border-slate-800 pb-2">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Black King Icon -->
+          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center shadow-md">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 fill-current" viewBox="0 0 24 24">
+              <path d="M19 22H5v-2h14v2m-1-4H6c-.55 0-1-.45-1-1 0-.32.16-.62.43-.8L7 13.1V8a1 1 0 0 1 1-1h1.59l-.8-2.4C8.66 4.2 8.87 3.8 9.27 3.67c.4-.13.84.08.96.48l.94 2.85h1.66l.94-2.85c.12-.4.56-.61.96-.48.4.13.61.53.48.93l-.8 2.4H16a1 1 0 0 1 1 1v5.1l1.57 1.1c.27.18.43.48.43.8 0 .55-.45 1-1 1M8 17h8l-1.33-4H9.33L8 17z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xl sm:text-2xl font-black tracking-tight text-white">BLACK</span>
+              <span id="turn-badge-1" class="hidden px-2 py-0.5 rounded-full bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wider shadow-sm">
+                Thinking
+              </span>
+            </div>
+            <div class="text-[11px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Player 2</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3 font-mono">
+          <span id="moves-1" class="text-xs sm:text-sm font-bold text-slate-300 bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 shadow-sm">
+            MV: 0
+          </span>
+          <span id="inc-badge-1" class="text-xs sm:text-sm font-bold text-amber-400 bg-amber-950/60 px-2 py-1 rounded-lg border border-amber-800/80 shadow-sm">
+            +0s
+          </span>
+        </div>
+      </div>
+
+      <!-- Giant Digits Black Screen -->
+      <div class="black-screen rounded-2xl flex-1 flex flex-col items-center justify-center my-2 p-2 relative">
+        <div id="flag-1" class="hidden absolute top-3 right-4 bg-red-600 text-white text-xs sm:text-sm font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg border border-red-400">
+          TIME OUT
+        </div>
+
+        <div id="display-1" class="digital-lcd font-extrabold text-amber-400 text-center tracking-tighter drop-shadow-[0_0_12px_rgba(245,158,11,0.25)]">
+          05:00
+        </div>
+
+        <div id="subtext-1" class="text-xs sm:text-sm font-mono font-bold text-slate-500 uppercase tracking-widest mt-1">
+          Waiting for White
+        </div>
+      </div>
+
+      <!-- Input Trigger Hint -->
+      <div class="flex items-center justify-between text-[11px] sm:text-xs font-mono font-semibold text-slate-400 pt-1">
+        <span id="keybind-label-1" class="text-amber-400 font-bold truncate">Hit any key on Right Half</span>
+        <span class="hidden sm:inline text-slate-500 uppercase">Click / Slam Screen</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Sleek Bottom Toolbar & Controls -->
+  <footer class="w-full bg-[#0d1017] border border-slate-800 rounded-2xl p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-2 shadow-xl">
+    
+    <!-- Time Presets and Mode Controls -->
+    <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+      <div class="flex items-center gap-1.5">
+        <label for="time-presets" class="text-xs font-bold text-slate-400 uppercase">Time:</label>
+        <select id="time-presets" onchange="onPresetChange(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm font-semibold text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer">
+          <optgroup label="Blitz & Bullet">
+            <option value="1|0">1 min (Bullet)</option>
+            <option value="2|1">2 + 1s (Bullet)</option>
+            <option value="3|0">3 min (Blitz)</option>
+            <option value="3|2">3 + 2s (Blitz)</option>
+            <option value="5|0" selected>5 min (Blitz)</option>
+            <option value="5|3">5 + 3s (Blitz)</option>
+          </optgroup>
+          <optgroup label="Rapid & Classical">
+            <option value="10|0">10 min (Rapid)</option>
+            <option value="15|10">15 + 10s (Rapid)</option>
+            <option value="30|0">30 min (Classical)</option>
+            <option value="90|30">90 + 30s (FIDE Classical)</option>
+          </optgroup>
+          <optgroup label="Custom">
+            <option value="custom">Custom Time Control...</option>
+          </optgroup>
+        </select>
+        <button onclick="openCustomModal()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition">
+          Custom
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1.5 sm:ml-2">
+        <label for="input-mode-select" class="text-xs font-bold text-slate-400 uppercase">Input:</label>
+        <select id="input-mode-select" onchange="onInputModeChange(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs sm:text-sm font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500 cursor-pointer">
+          <option value="split" selected>Split Keyboard (Left / Right Half)</option>
+          <option value="single">Single Key / Custom USB</option>
+          <option value="gamepad">Gamepad / Arcade USB (Buttons 0 & 1)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Center Action Buttons -->
+    <div class="flex items-center gap-2">
+      <button id="btn-start" onclick="togglePlayPause()" class="px-6 py-2 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2">
+        <svg id="icon-play" class="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+        <span id="start-btn-label">Start</span>
+      </button>
+
+      <button id="btn-reset" onclick="resetClock()" class="px-4 py-2 rounded-xl font-bold text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+        Reset
+      </button>
+    </div>
+
+    <!-- Right Controls: Audio & Remap -->
+    <div class="flex items-center gap-2">
+      <button id="btn-sound" onclick="toggleSound()" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5">
+        <span id="sound-icon">🔊</span>
+        <span class="hidden sm:inline" id="sound-label">Audio On</span>
+      </button>
+
+      <button onclick="openKeymapModal()" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5" title="Remap USB buttons or individual keys">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        <span>Remap USB</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Modal: Custom Time & Handicap Controls -->
+  <div id="modal-custom" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-[#12161f] border border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white uppercase tracking-wider">Custom Time Control</h3>
+        <button onclick="closeCustomModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        <div class="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800">
+          <label for="toggle-odds" class="text-xs font-medium text-slate-300 cursor-pointer">Different time for White & Black (Handicap / Odds)</label>
+          <input type="checkbox" id="toggle-odds" onchange="toggleHandicapInputs(this.checked)" class="w-4 h-4 rounded text-emerald-600 bg-slate-800 border-slate-700 cursor-pointer">
+        </div>
+
+        <!-- Unified Single Time Controls -->
+        <div id="unified-inputs" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Base Minutes</label>
+              <input type="number" id="cust-minutes" min="0" max="600" value="5" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1">Base Seconds</label>
+              <input type="number" id="cust-seconds" min="0" max="59" value="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 mb-1">Fischer Increment (+sec per move)</label>
+            <input type="number" id="cust-inc" min="0" max="180" value="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+          </div>
+        </div>
+
+        <!-- Handicap / Split Inputs -->
+        <div id="handicap-inputs" class="space-y-3 hidden pt-2 border-t border-slate-800">
+          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+            <span class="text-xs font-bold text-white uppercase tracking-wider block mb-2">White Side</span>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-400">Min</label>
+                <input type="number" id="cust-w-min" min="0" max="600" value="5" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400">Sec</label>
+                <input type="number" id="cust-w-sec" min="0" max="59" value="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400">+Inc (s)</label>
+                <input type="number" id="cust-w-inc" min="0" max="180" value="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+            <span class="text-xs font-bold text-amber-400 uppercase tracking-wider block mb-2">Black Side</span>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-400">Min</label>
+                <input type="number" id="cust-b-min" min="0" max="600" value="3" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400">Sec</label>
+                <input type="number" id="cust-b-sec" min="0" max="59" value="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400">+Inc (s)</label>
+                <input type="number" id="cust-b-inc" min="0" max="180" value="2" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-xs text-white">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
+          <button onclick="closeCustomModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">
+            Cancel
+          </button>
+          <button onclick="saveAndApplyCustom()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider">
+            Apply Time Control
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: USB & Custom Key Remap -->
+  <div id="modal-keymap" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-[#12161f] border border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div>
+          <h3 class="text-base font-bold text-white uppercase tracking-wider">USB / Key Remap</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Click a slot then press your physical switch or key</p>
+        </div>
+        <button onclick="closeKeymapModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="mt-4 space-y-3">
+        <div class="p-3 bg-slate-900 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-bold text-white">White Switch Button</div>
+            <div class="text-[11px] text-slate-400" id="label-mapped-0">Active: KeyA / ArrowLeft</div>
+          </div>
+          <button id="btn-learn-0" onclick="startKeyLearn(0)" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold">
+            Press to Bind
+          </button>
+        </div>
+
+        <div class="p-3 bg-slate-900 rounded-2xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-bold text-white">Black Switch Button</div>
+            <div class="text-[11px] text-slate-400" id="label-mapped-1">Active: KeyL / ArrowRight</div>
+          </div>
+          <button id="btn-learn-1" onclick="startKeyLearn(1)" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold">
+            Press to Bind
+          </button>
+        </div>
+
+        <div id="learning-indicator" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs text-center font-mono animate-pulse">
+          Listening... Press your USB switch or keyboard key now.
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 mt-2 border-t border-slate-800 text-xs text-slate-400">
+        <button onclick="restoreDefaultKeys()" class="hover:text-slate-200 underline">
+          Restore Defaults
+        </button>
+        <button onclick="closeKeymapModal()" class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      beep(freq, duration, type = 'sine', volume = 0.15) {
+        if (this.muted) return;
+        try {
+          this.init();
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+
+          gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {
+          // Audio autoplay safe fallback
+        }
+      }
+
+      playSwitchTone() {
+        this.beep(820, 0.035, 'triangle', 0.12);
+      }
+
+      playFlagTone() {
+        this.beep(220, 0.3, 'sawtooth', 0.25);
+        setTimeout(() => this.beep(150, 0.6, 'sawtooth', 0.25), 320);
+      }
+
+      playLowTimeTone() {
+        this.beep(650, 0.05, 'sine', 0.08);
+      }
+    }
+
+    const audio = new SoundEngine();
+
+    // Application state
+    let inputMode = "split"; // "split" | "single" | "gamepad"
+
+    let timeControlConfig = {
+      isHandicap: false,
+      baseWhiteSec: 5 * 60,
+      incWhiteSec: 0,
+      baseBlackSec: 5 * 60,
+      incBlackSec: 0,
+      label: "5m + 0s",
+      isCustom: false
+    };
+
+    let timeRemaining = [300, 300];
+    let moves = [0, 0];
+    let activePlayer = null; // 0 for White, 1 for Black, null when stopped
+    let isRunning = false;
+    let animFrameId = null;
+    let lastTimestamp = 0;
+    let gameEnded = false;
+    let lowWarningTriggered = [false, false];
+
+    // Single Key / USB bindings
+    let singleKeyMappings = {
+      0: ["KeyA", "ArrowLeft"],
+      1: ["KeyL", "ArrowRight"]
+    };
+
+    let learningTarget = null;
+
+    // Standard keyboard split partitions
+    const LEFT_HALF_KEYS = new Set([
+      "Backquote", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5",
+      "KeyQ", "KeyW", "KeyE", "KeyR", "KeyT",
+      "KeyA", "KeyS", "KeyD", "KeyF", "KeyG",
+      "KeyZ", "KeyX", "KeyC", "KeyV", "KeyB",
+      "Tab", "CapsLock", "ShiftLeft", "ControlLeft", "AltLeft", "MetaLeft"
+    ]);
+
+    const RIGHT_HALF_KEYS = new Set([
+      "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal",
+      "KeyY", "KeyU", "KeyI", "KeyO", "KeyP", "BracketLeft", "BracketRight", "Backslash",
+      "KeyH", "KeyJ", "KeyK", "KeyL", "Semicolon", "Quote", "Enter",
+      "KeyN", "KeyM", "Comma", "Period", "Slash",
+      "ShiftRight", "ControlRight", "AltRight", "MetaRight",
+      "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+      "Insert", "Delete", "Home", "End", "PageUp", "PageDown",
+      "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6",
+      "Numpad7", "Numpad8", "Numpad9", "NumpadDecimal", "NumpadAdd", "NumpadSubtract",
+      "NumpadMultiply", "NumpadDivide", "NumpadEnter"
+    ]);
+
+    // DOM Element References
+    const elDisplay0 = document.getElementById("display-0");
+    const elDisplay1 = document.getElementById("display-1");
+    const elSubtext0 = document.getElementById("subtext-0");
+    const elSubtext1 = document.getElementById("subtext-1");
+    const elMoves0 = document.getElementById("moves-0");
+    const elMoves1 = document.getElementById("moves-1");
+    const elCard0 = document.getElementById("card-0");
+    const elCard1 = document.getElementById("card-1");
+    const elFlag0 = document.getElementById("flag-0");
+    const elFlag1 = document.getElementById("flag-1");
+    const elBadge0 = document.getElementById("turn-badge-0");
+    const elBadge1 = document.getElementById("turn-badge-1");
+    const elIncBadge0 = document.getElementById("inc-badge-0");
+    const elIncBadge1 = document.getElementById("inc-badge-1");
+    const elKeybindLabel0 = document.getElementById("keybind-label-0");
+    const elKeybindLabel1 = document.getElementById("keybind-label-1");
+
+    const elStartBtn = document.getElementById("btn-start");
+    const elStartLabel = document.getElementById("start-btn-label");
+    const elGameStatus = document.getElementById("game-status-badge");
+    const elHeaderPreset = document.getElementById("header-preset-badge");
+    const elActiveModeBadge = document.getElementById("active-mode-badge");
+
+    function formatTime(sec, playerIndex) {
+      if (sec <= 0) return "00:00";
+
+      // Under 20 seconds: switch to tenths for authentic blitz precision
+      if (sec < 20) {
+        const wholeSecs = Math.floor(sec);
+        const tenths = Math.floor((sec % 1) * 10);
+        const targetDisplay = playerIndex === 0 ? elDisplay0 : elDisplay1;
+        targetDisplay.classList.add("tenths");
+        return `${String(wholeSecs).padStart(2, '0')}.${tenths}`;
+      }
+
+      const targetDisplay = playerIndex === 0 ? elDisplay0 : elDisplay1;
+      targetDisplay.classList.remove("tenths");
+
+      const totalSecs = Math.floor(sec);
+      const hours = Math.floor(totalSecs / 3600);
+      const minutes = Math.floor((totalSecs % 3600) / 60);
+      const seconds = totalSecs % 60;
+
+      if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function updateInputModeLabels() {
+      if (inputMode === "split") {
+        elKeybindLabel0.textContent = "Hit any key on Left Half";
+        elKeybindLabel1.textContent = "Hit any key on Right Half";
+        elActiveModeBadge.textContent = "Mode: Split Keyboard";
+      } else if (inputMode === "single") {
+        elKeybindLabel0.textContent = `Key: [${singleKeyMappings[0].join(" / ")}]`;
+        elKeybindLabel1.textContent = `Key: [${singleKeyMappings[1].join(" / ")}]`;
+        elActiveModeBadge.textContent = "Mode: Single Key / USB";
+      } else if (inputMode === "gamepad") {
+        elKeybindLabel0.textContent = "Gamepad Button 0 (K1)";
+        elKeybindLabel1.textContent = "Gamepad Button 1 (K2)";
+        elActiveModeBadge.textContent = "Mode: Gamepad / Arcade USB";
+      }
+    }
+
+    function render() {
+      elDisplay0.textContent = formatTime(timeRemaining[0], 0);
+      elDisplay1.textContent = formatTime(timeRemaining[1], 1);
+
+      elMoves0.textContent = `MV: ${moves[0]}`;
+      elMoves1.textContent = `MV: ${moves[1]}`;
+
+      // Card active states
+      elCard0.classList.toggle("active-turn", activePlayer === 0 && isRunning);
+      elCard1.classList.toggle("active-turn", activePlayer === 1 && isRunning);
+      elBadge0.classList.toggle("hidden", !(activePlayer === 0 && isRunning));
+      elBadge1.classList.toggle("hidden", !(activePlayer === 1 && isRunning));
+
+      // Subtext indicators
+      if (gameEnded) {
+        // Timeout banner stays active
+      } else if (!isRunning && activePlayer === null) {
+        elSubtext0.textContent = "WHITE MOVES FIRST";
+        elSubtext1.textContent = "WAITING FOR WHITE";
+      } else if (!isRunning) {
+        elSubtext0.textContent = "PAUSED";
+        elSubtext1.textContent = "PAUSED";
+      } else {
+        elSubtext0.textContent = activePlayer === 0 ? "CLOCK TICKING" : "WAITING";
+        elSubtext1.textContent = activePlayer === 1 ? "CLOCK TICKING" : "WAITING";
+      }
+    }
+
+    function clockLoop(now) {
+      if (!isRunning || gameEnded) return;
+
+      const delta = (now - lastTimestamp) / 1000;
+      lastTimestamp = now;
+
+      if (activePlayer !== null) {
+        timeRemaining[activePlayer] -= delta;
+
+        // Beep tick warning when entering last 5 seconds
+        if (timeRemaining[activePlayer] <= 5 && !lowWarningTriggered[activePlayer]) {
+          audio.playLowTimeTone();
+          lowWarningTriggered[activePlayer] = true;
+        }
+
+        if (timeRemaining[activePlayer] <= 0) {
+          timeRemaining[activePlayer] = 0;
+          render();
+          handleTimeout(activePlayer);
+          return;
+        }
+      }
+
+      render();
+      animFrameId = requestAnimationFrame(clockLoop);
+    }
+
+    function handleTimeout(playerIndex) {
+      gameEnded = true;
+      isRunning = false;
+      cancelAnimationFrame(animFrameId);
+
+      const winner = playerIndex === 0 ? "BLACK" : "WHITE";
+      audio.playFlagTone();
+
+      if (playerIndex === 0) {
+        elCard0.classList.add("flagged");
+        elFlag0.classList.remove("hidden");
+        elSubtext0.textContent = "FLAG FALLEN";
+      } else {
+        elCard1.classList.add("flagged");
+        elFlag1.classList.remove("hidden");
+        elSubtext1.textContent = "FLAG FALLEN";
+      }
+
+      elGameStatus.textContent = `${winner} WINS ON TIME`;
+      elGameStatus.className = "px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-red-950 text-red-400 border border-red-700";
+
+      elStartBtn.disabled = true;
+      elStartBtn.className = "px-6 py-2 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase opacity-40 cursor-not-allowed bg-slate-800 text-slate-500";
+    }
+
+    // Turn Handover Logic
+    function switchPlayerTurn(playerWhoHit) {
+      if (gameEnded) return;
+
+      audio.init();
+
+      // White starts the game by hitting their button after playing move 1
+      if (activePlayer === null) {
+        if (playerWhoHit === 0) {
+          activePlayer = 1;
+          moves[0] = 1;
+          timeRemaining[0] += timeControlConfig.incWhiteSec;
+          audio.playSwitchTone();
+          startGame();
+        }
+        return;
+      }
+
+      // If active player pressed their button, conclude turn
+      if (isRunning && activePlayer === playerWhoHit) {
+        audio.playSwitchTone();
+
+        const inc = playerWhoHit === 0 ? timeControlConfig.incWhiteSec : timeControlConfig.incBlackSec;
+        timeRemaining[playerWhoHit] += inc;
+        moves[playerWhoHit] += 1;
+        lowWarningTriggered[playerWhoHit] = false;
+
+        activePlayer = playerWhoHit === 0 ? 1 : 0;
+        lastTimestamp = performance.now();
+        render();
+      }
+    }
+
+    function handleCardClick(playerIndex) {
+      if (!isRunning && activePlayer === null && playerIndex === 0) {
+        switchPlayerTurn(0);
+        return;
+      }
+      if (isRunning && activePlayer === playerIndex) {
+        switchPlayerTurn(playerIndex);
+      }
+    }
+
+    function startGame() {
+      if (gameEnded) return;
+      isRunning = true;
+      lastTimestamp = performance.now();
+      animFrameId = requestAnimationFrame(clockLoop);
+
+      elStartLabel.textContent = "Pause";
+      elStartBtn.className = "px-6 py-2 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase shadow-lg bg-amber-600 hover:bg-amber-500 text-white transition flex items-center gap-2";
+      elGameStatus.textContent = "IN PLAY";
+      elGameStatus.className = "px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-950 text-emerald-400 border border-emerald-700";
+      render();
+    }
+
+    function pauseGame() {
+      isRunning = false;
+      cancelAnimationFrame(animFrameId);
+
+      elStartLabel.textContent = "Resume";
+      elStartBtn.className = "px-6 py-2 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2";
+      elGameStatus.textContent = "PAUSED";
+      elGameStatus.className = "px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-slate-900 text-amber-300 border border-amber-600";
+      render();
+    }
+
+    function togglePlayPause() {
+      if (gameEnded) return;
+      if (isRunning) {
+        pauseGame();
+      } else {
+        if (activePlayer === null) activePlayer = 0;
+        startGame();
+      }
+    }
+
+    function resetClock() {
+      pauseGame();
+      gameEnded = false;
+      lowWarningTriggered = [false, false];
+      activePlayer = null;
+      moves = [0, 0];
+
+      timeRemaining = [timeControlConfig.baseWhiteSec, timeControlConfig.baseBlackSec];
+
+      elCard0.classList.remove("flagged");
+      elCard1.classList.remove("flagged");
+      elFlag0.classList.add("hidden");
+      elFlag1.classList.add("hidden");
+
+      elStartBtn.disabled = false;
+      elStartLabel.textContent = "Start";
+      elStartBtn.className = "px-6 py-2 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-2";
+      elGameStatus.textContent = "READY";
+      elGameStatus.className = "px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700";
+
+      elIncBadge0.textContent = `+${timeControlConfig.incWhiteSec}s`;
+      elIncBadge1.textContent = `+${timeControlConfig.incBlackSec}s`;
+
+      render();
+    }
+
+    function onInputModeChange(mode) {
+      inputMode = mode;
+      updateInputModeLabels();
+    }
+
+    // Comprehensive Keyboard Event Handler
+    window.addEventListener("keydown", (e) => {
+      if (learningTarget !== null) {
+        e.preventDefault();
+        assignSingleKey(learningTarget, e.code);
+        stopKeyLearn();
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code.startsWith("F") && e.code.length <= 3) return;
+
+      if (e.code === "Escape") {
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      if (inputMode === "single" && (e.code === "Space" || e.code === "KeyP")) {
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      if (e.code === "KeyR" && !isRunning && activePlayer !== null) {
+        resetClock();
+        return;
+      }
+
+      // 1. Split Keyboard Mode: left cluster = White, right cluster = Black
+      if (inputMode === "split") {
+        if (LEFT_HALF_KEYS.has(e.code)) {
+          e.preventDefault();
+          switchPlayerTurn(0);
+          return;
+        }
+
+        if (RIGHT_HALF_KEYS.has(e.code) || e.code === "Space") {
+          e.preventDefault();
+          switchPlayerTurn(1);
+          return;
+        }
+      }
+
+      // 2. Single Key / USB Mode
+      if (inputMode === "single") {
+        if (singleKeyMappings[0].includes(e.code)) {
+          e.preventDefault();
+          switchPlayerTurn(0);
+          return;
+        }
+        if (singleKeyMappings[1].includes(e.code)) {
+          e.preventDefault();
+          switchPlayerTurn(1);
+          return;
+        }
+      }
+    });
+
+    // Gamepad API Polling (for DirectInput Zero-Delay Arcade Encoders)
+    let lastGamepadButtons = {};
+    function pollGamepad() {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const gp of gamepads) {
+        if (!gp) continue;
+
+        const b0 = gp.buttons[0]?.pressed;
+        if (b0 && !lastGamepadButtons['b0']) {
+          if (learningTarget === 0) {
+            assignSingleKey(0, 'Gamepad-Btn-0');
+            stopKeyLearn();
+          } else if (inputMode === "gamepad" || inputMode === "single") {
+            switchPlayerTurn(0);
+          }
+        }
+        lastGamepadButtons['b0'] = b0;
+
+        const b1 = gp.buttons[1]?.pressed;
+        if (b1 && !lastGamepadButtons['b1']) {
+          if (learningTarget === 1) {
+            assignSingleKey(1, 'Gamepad-Btn-1');
+            stopKeyLearn();
+          } else if (inputMode === "gamepad" || inputMode === "single") {
+            switchPlayerTurn(1);
+          }
+        }
+        lastGamepadButtons['b1'] = b1;
+      }
+      requestAnimationFrame(pollGamepad);
+    }
+    requestAnimationFrame(pollGamepad);
+
+    // Preset & Custom Dialog Logic
+    function onPresetChange(val) {
+      if (val === "custom") {
+        openCustomModal();
+        return;
+      }
+
+      const [mins, inc] = val.split("|").map(Number);
+      timeControlConfig = {
+        isHandicap: false,
+        baseWhiteSec: mins * 60,
+        incWhiteSec: inc,
+        baseBlackSec: mins * 60,
+        incBlackSec: inc,
+        label: `${mins}m + ${inc}s`,
+        isCustom: false
+      };
+
+      elHeaderPreset.textContent = timeControlConfig.label;
+      resetClock();
+    }
+
+    function openCustomModal() {
+      document.getElementById("modal-custom").classList.remove("hidden");
+    }
+
+    function closeCustomModal() {
+      document.getElementById("modal-custom").classList.add("hidden");
+      const select = document.getElementById("time-presets");
+      if (select.value === "custom" && !timeControlConfig.isCustom) {
+        select.value = "5|0";
+      }
+    }
+
+    function toggleHandicapInputs(checked) {
+      document.getElementById("unified-inputs").classList.toggle("hidden", checked);
+      document.getElementById("handicap-inputs").classList.toggle("hidden", !checked);
+    }
+
+    function saveAndApplyCustom() {
+      const isOdds = document.getElementById("toggle-odds").checked;
+
+      if (!isOdds) {
+        const min = parseInt(document.getElementById("cust-minutes").value) || 0;
+        const sec = parseInt(document.getElementById("cust-seconds").value) || 0;
+        const inc = parseInt(document.getElementById("cust-inc").value) || 0;
+        const total = (min * 60) + sec;
+
+        if (total <= 0) return;
+
+        timeControlConfig = {
+          isHandicap: false,
+          baseWhiteSec: total,
+          incWhiteSec: inc,
+          baseBlackSec: total,
+          incBlackSec: inc,
+          label: `${min}m ${sec}s + ${inc}s`,
+          isCustom: true
+        };
+      } else {
+        const wMin = parseInt(document.getElementById("cust-w-min").value) || 0;
+        const wSec = parseInt(document.getElementById("cust-w-sec").value) || 0;
+        const wInc = parseInt(document.getElementById("cust-w-inc").value) || 0;
+        const bMin = parseInt(document.getElementById("cust-b-min").value) || 0;
+        const bSec = parseInt(document.getElementById("cust-b-sec").value) || 0;
+        const bInc = parseInt(document.getElementById("cust-b-inc").value) || 0;
+
+        const wTotal = (wMin * 60) + wSec;
+        const bTotal = (bMin * 60) + bSec;
+
+        if (wTotal <= 0 || bTotal <= 0) return;
+
+        timeControlConfig = {
+          isHandicap: true,
+          baseWhiteSec: wTotal,
+          incWhiteSec: wInc,
+          baseBlackSec: bTotal,
+          incBlackSec: bInc,
+          label: `W:${wMin}m / B:${bMin}m`,
+          isCustom: true
+        };
+      }
+
+      document.getElementById("time-presets").value = "custom";
+      elHeaderPreset.textContent = timeControlConfig.label;
+      closeCustomModal();
+      resetClock();
+    }
+
+    // Remap Modal Logic
+    function openKeymapModal() {
+      updateKeymapLabels();
+      document.getElementById("modal-keymap").classList.remove("hidden");
+    }
+
+    function closeKeymapModal() {
+      stopKeyLearn();
+      document.getElementById("modal-keymap").classList.add("hidden");
+    }
+
+    function updateKeymapLabels() {
+      document.getElementById("label-mapped-0").textContent = `Active: ${singleKeyMappings[0].join(" / ")}`;
+      document.getElementById("label-mapped-1").textContent = `Active: ${singleKeyMappings[1].join(" / ")}`;
+      updateInputModeLabels();
+    }
+
+    function startKeyLearn(playerIdx) {
+      learningTarget = playerIdx;
+      document.getElementById("learning-indicator").classList.remove("hidden");
+      document.getElementById(`btn-learn-${playerIdx}`).textContent = "Listening...";
+    }
+
+    function stopKeyLearn() {
+      learningTarget = null;
+      document.getElementById("learning-indicator").classList.add("hidden");
+      document.getElementById("btn-learn-0").textContent = "Press to Bind";
+      document.getElementById("btn-learn-1").textContent = "Press to Bind";
+    }
+
+    function assignSingleKey(playerIdx, code) {
+      singleKeyMappings[playerIdx] = [code];
+      inputMode = "single";
+      document.getElementById("input-mode-select").value = "single";
+      updateKeymapLabels();
+    }
+
+    function restoreDefaultKeys() {
+      singleKeyMappings = {
+        0: ["KeyA", "ArrowLeft"],
+        1: ["KeyL", "ArrowRight"]
+      };
+      updateKeymapLabels();
+    }
+
+    function toggleSound() {
+      audio.muted = !audio.muted;
+      document.getElementById("sound-icon").textContent = audio.muted ? "🔇" : "🔊";
+      document.getElementById("sound-label").textContent = audio.muted ? "Audio Muted" : "Audio On";
+    }
+
+    document.getElementById("btn-fullscreen").addEventListener("click", () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    // Bootstrapping
+    updateInputModeLabels();
+    render();
+  </script>
+</body>
+</html>
